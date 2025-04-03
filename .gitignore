@@ -45,3 +45,4 @@ token.txt
 config/
 data/
 .idea/
+.idea/*
