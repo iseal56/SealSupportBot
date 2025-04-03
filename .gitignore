@@ -42,3 +42,6 @@ bin/
 .DS_Store
 
 token.txt
+config/
+data/
+.idea/
