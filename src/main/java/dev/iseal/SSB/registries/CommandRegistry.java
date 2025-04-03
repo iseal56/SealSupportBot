@@ -9,6 +9,7 @@ import net.dv8tion.jda.internal.utils.JDALogger;
 import org.slf4j.Logger;
 
 import java.util.HashMap;
+import java.util.stream.Collectors;
 
 public class CommandRegistry {
 
@@ -21,15 +22,11 @@ public class CommandRegistry {
     }
 
     private final Logger log = JDALogger.getLog("SBB-CommandRegistry");
-    private final HashMap<String, CommandData> registeredCommands = new HashMap<>();
+    private final HashMap<String, AbstractCommand> registeredCommands = new HashMap<>();
 
     private CommandRegistry() {}
 
     public void init() {
-        // detect all commands in the package
-        // and run registerCommand
-        // then, register them with the JDA instance
-
         // Register all commands in the package
         Utils.findAllClassesInPackage("dev.iseal.SSB.commands", AbstractCommand.class)
                 .forEach(commandClass -> {
@@ -37,7 +34,7 @@ public class CommandRegistry {
                         // Instantiate the command class
                         AbstractCommand command = (AbstractCommand) commandClass.getDeclaredConstructor().newInstance();
                         // Register the command
-                        registerCommand(command.getCommand().getName(), command.getCommand());
+                        registerCommand(command.getCommand().getName(), command);
                     } catch (Exception e) {
                         log.error("Failed to register command {}: {}", commandClass.getName(), e.getMessage());
                     }
@@ -45,7 +42,9 @@ public class CommandRegistry {
 
         SSBMain.getJDA().getGuildCache().forEach(
                 guild -> guild.updateCommands().addCommands(
-                        registeredCommands.values()
+                        registeredCommands.values().stream()
+                                .map(AbstractCommand::getCommand)
+                                .collect(Collectors.toList())
                 ).queue(
                         success -> log.info("Command registered in guild {}", guild.getName()),
                         failure -> log.error("Failed to register command in guild {}: {}", guild.getName(), failure.getMessage())
@@ -53,10 +52,22 @@ public class CommandRegistry {
         );
     }
 
-    public void registerCommand(String commandName, CommandData commandObject) {
+    public void registerCommand(String commandName, AbstractCommand commandObject) {
         // Register the command with the command object
         log.info("Registering command: {}", commandName);
         registeredCommands.put(commandName, commandObject);
+    }
+
+    public boolean isCommandRegistered(String commandName) {
+        return registeredCommands.containsKey(commandName);
+    }
+
+    public AbstractCommand getCommand(String commandName) {
+        if (!isCommandRegistered(commandName)) {
+            log.warn("Command {} is not registered", commandName);
+            return null;
+        }
+        return registeredCommands.get(commandName);
     }
 
 }

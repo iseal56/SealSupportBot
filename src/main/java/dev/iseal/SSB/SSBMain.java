@@ -1,8 +1,15 @@
 package dev.iseal.SSB;
 
+import dev.iseal.SSB.listeners.ButtonClickListener;
+import dev.iseal.SSB.listeners.ModalInteractionListener;
+import dev.iseal.SSB.listeners.SlashCommandHandler;
+import dev.iseal.SSB.managers.AdDataManager;
 import dev.iseal.SSB.registries.CommandRegistry;
+import dev.iseal.SSB.registries.ModalRegistry;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
+import net.dv8tion.jda.api.entities.Activity;
+import net.dv8tion.jda.api.interactions.modals.Modal;
 import net.dv8tion.jda.internal.utils.JDALogger;
 import org.slf4j.Logger;
 
@@ -18,7 +25,16 @@ public class SSBMain {
 
     public static void main(String[] args) {
         String token = readToken();
-        JDA api = JDABuilder.createDefault(token).build();
+        JDA api = JDABuilder.createDefault(token)
+                //listeners
+                .addEventListeners(new SlashCommandHandler())
+                .addEventListeners(ButtonClickListener.getInstance())
+                .addEventListeners(ModalInteractionListener.getInstance())
+
+                // set the activity
+                .setActivity(Activity.watching("the world burn"))
+                //finally, build the JDA instance
+                .build();
         try {
             api.awaitReady();
             log.info("SSB is ready!");
@@ -30,6 +46,15 @@ public class SSBMain {
 
         log.info("Initializing SSB commands...");
         CommandRegistry.getInstance().init();
+        ModalRegistry.getInstance().init();
+        log.info("SSB commands initialized!");
+
+        log.info("Initializing SSB data managers...");
+        // get the instance to call the init method.
+        AdDataManager.getInstance();
+        log.info("SSB data managers initialized!");
+
+        log.info("Loading done!");
     }
 
     private static String readToken() {
