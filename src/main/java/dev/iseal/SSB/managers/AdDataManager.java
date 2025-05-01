@@ -81,9 +81,12 @@ public class AdDataManager {
      * WARNING: This method assumes that userID is a valid user ID
      *
      * @param ad The ad to be added
-     * @param userID The user ID of the user advertising
+     * @param sender the user advertising
      */
-    public String addPendingAd(String ad, long userID) {
+    public String addPendingAd(String ad, User sender) {
+
+        long userID = sender.getIdLong();
+
         // check for pending ads
         if (registeredAdUUIDs.getData().containsValue(userID)) {
             return "You already have an ad registered. Please wait until it is approved or denied.";
@@ -119,7 +122,7 @@ public class AdDataManager {
         }
 
         EmbedBuilder embed = new EmbedBuilder();
-        embed.setTitle("New ad by "+ SSBMain.getJDA().getUserById(userID).getName() +" pending approval");
+        embed.setTitle("New ad by " + sender.getName() +" pending approval");
         embed.setDescription(ad);
         embed.setColor(Color.GRAY);
         embed.setFooter("Ad ID: " + adID);
@@ -141,13 +144,14 @@ public class AdDataManager {
         MessageEmbed embed = event.getMessage().getEmbeds().get(0);
         String adID = embed.getFooter().getText().replace("Ad ID: ", "");
         String ad = embed.getDescription();
-        User adCreator = SSBMain.getJDA().getUserById(getUserIDbyAdID(adID));
+        User adCreator = Utils.getUserFromCacheOrFetch(getUserIDbyAdID(adID));
 
         // send ad to channel
         EmbedBuilder embedBuilder = new EmbedBuilder();
-        embedBuilder.setTitle("Ad by "+adCreator.getName());
+        embedBuilder.setTitle("Ad by "+adCreator.getEffectiveName());
         embedBuilder.setDescription(ad);
-        embedBuilder.setFooter("The ad is not official and is not endorsed by the server staff. For more info, contact an admin.");
+        embedBuilder.setFooter("The ad is not official and is not endorsed by the server staff. For more info, contact an admin.\n"
+        + "Actual sender username: "+adCreator.getName());
         TextChannel channel = event.getGuild().getTextChannelById(adChannelID);
         channel.sendMessageEmbeds(embedBuilder.build()).queue();
 
@@ -185,7 +189,7 @@ public class AdDataManager {
             return false;
         }
 
-        boolean hasPerms = guild.getMember(user).hasPermission(channel, Permission.MESSAGE_SEND);
+        boolean hasPerms = Utils.getGuildMemberFromCacheOrFetch(user, guild).hasPermission(channel, Permission.MESSAGE_SEND);
 
         //TODO: add further permissions checks in the future
         return hasPerms;

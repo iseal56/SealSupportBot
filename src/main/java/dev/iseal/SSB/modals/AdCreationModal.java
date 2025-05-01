@@ -7,6 +7,7 @@ import net.dv8tion.jda.api.interactions.components.ActionRow;
 import net.dv8tion.jda.api.interactions.components.text.TextInput;
 import net.dv8tion.jda.api.interactions.components.text.TextInputStyle;
 import net.dv8tion.jda.api.interactions.modals.Modal;
+import net.dv8tion.jda.api.utils.cache.CacheFlag;
 import net.dv8tion.jda.internal.utils.JDALogger;
 import org.slf4j.Logger;
 
@@ -31,7 +32,7 @@ public class AdCreationModal extends AbstractModal {
     public void handleEvent(ModalInteractionEvent event) {
         String ad = event.getValue("ad").getAsString();
 
-        String returnString = AdDataManager.getInstance().addPendingAd(ad, event.getUser().getIdLong());
+        String returnString = AdDataManager.getInstance().addPendingAd(ad, event.getUser());
         log.info("{} added an ad: {} with return string: {}", event.getUser().getName(), ad, returnString);
         event.reply(returnString).setEphemeral(true).queue();
     }

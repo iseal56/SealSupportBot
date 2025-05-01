@@ -6,8 +6,8 @@ plugins {
 application.mainClass = "dev.iseal.SSB.SSBMain"
 
 
-group = "org.example"
-version = "1.0"
+group = "dev.iseal"
+version = "1.1.2.1"
 
 val jdaVersion = "5.3.1"
 val logbackVersion = "1.5.18"

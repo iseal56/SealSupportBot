@@ -1,13 +1,20 @@
 package dev.iseal.SSB.utils;
 
+import de.leonhard.storage.Json;
 import dev.iseal.SSB.SSBMain;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
+import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.entities.IPermissionHolder;
+import net.dv8tion.jda.api.entities.Member;
+import net.dv8tion.jda.api.entities.User;
 import org.reflections.Reflections;
 
 import java.util.Set;
 
 public class Utils {
+
+    private static final Json tempData = new Json("tempData.json", System.getProperty("user.dir") + "/data/tempData");
 
     /**
      * Find all classes in a package that extend a given class
@@ -20,6 +27,23 @@ public class Utils {
     public static Set<Class<?>> findAllClassesInPackage(String packageName, Class<?> clazz) {
         Reflections reflections = new Reflections(packageName);
         return (Set<Class<?>>) reflections.getSubTypesOf(clazz);
+    }
+
+    public static User getUserFromCacheOrFetch(long userID) {
+        JDA jda = SSBMain.getJDA();
+        User user = jda.getUserById(userID);
+        if (user == null) {
+            user = jda.retrieveUserById(userID).complete();
+        }
+        return user;
+    }
+
+    public static Member getGuildMemberFromCacheOrFetch(User user, Guild guild) {
+        Member member = guild.getMember(user);
+        if (member == null) {
+            member = guild.retrieveMember(user).complete();
+        }
+        return member;
     }
 
     /**
@@ -44,6 +68,18 @@ public class Utils {
         SSBMain.getJDA().openPrivateChannelById(userId)
                 .flatMap(channel -> channel.sendMessageEmbeds(embed.build()))
                 .queue();
+    }
+
+    public static void addTempFileData(String key, Object value) {
+        tempData.set(key, value);
+    }
+
+    public static <T> T getTempFileData(String key, T type) {
+        return tempData.get(key, type);
+    }
+
+    public static void removeTempFileData(String key) {
+        tempData.remove(key);
     }
 
 }
