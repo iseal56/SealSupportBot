@@ -115,7 +115,7 @@ public class SSBMain {
         }
 
         int secondsTaken = (int) ((System.currentTimeMillis() - time) / 1000);
-        int minutesTaken = secondsTaken / 60;
+        float minutesTaken = (float) secondsTaken / 60;
         Utils.removeTempFileData("root-reboot-requested-by");
         Utils.removeTempFileData("root-reboot-requested-at");
         // dm the user
