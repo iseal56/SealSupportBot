@@ -42,6 +42,7 @@ bin/
 .DS_Store
 
 token.txt
+prod_token.txt
 config/
 data/
 .idea/
