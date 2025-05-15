@@ -1,16 +1,15 @@
-package dev.iseal.SSB.systems;
+package dev.iseal.SSB.systems.stopReplyPing;
 
 import de.leonhard.storage.Yaml;
 import dev.iseal.SSB.SSBMain;
 import dev.iseal.SSB.listeners.MessageListener;
+import dev.iseal.SSB.registries.FeatureRegistry;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
-import net.dv8tion.jda.api.exceptions.DetachedEntityException;
 import net.dv8tion.jda.api.exceptions.InsufficientPermissionException;
-import net.dv8tion.jda.api.utils.messages.MessageCreateData;
 import net.dv8tion.jda.internal.utils.JDALogger;
 import org.slf4j.Logger;
 
@@ -30,6 +29,7 @@ public class StopReplyPing {
 
     private final Yaml yaml = new Yaml("stopReplyPings.yml", System.getProperty("user.dir")+ File.separator + "config" + File.separator + "stopReplyPings");
     private final ArrayList<Long> bannedIDs = new ArrayList<>();
+    private final FeatureRegistry featureRegistry = FeatureRegistry.getInstance();
 
     public void init() {
         MessageListener.getInstance().registerMessageConsumer(this::execute);
@@ -43,9 +43,13 @@ public class StopReplyPing {
                 bannedIDs.add(Long.valueOf((String)id));
             }
         });
+        featureRegistry.registerFeature("feature.stopReplyPing", true);
     }
 
     private void execute(MessageReceivedEvent event) {
+        if (!featureRegistry.isFeatureEnabled("feature.stopReplyPing")) {
+            return; // feature is disabled
+        }
         Message referenced = event.getMessage().getReferencedMessage();
         if (referenced == null) {
             return;

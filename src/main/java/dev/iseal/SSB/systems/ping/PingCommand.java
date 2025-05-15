@@ -1,13 +1,10 @@
-package dev.iseal.SSB.commands;
+package dev.iseal.SSB.systems.ping;
 
 import dev.iseal.SSB.utils.abstracts.AbstractCommand;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
-import net.dv8tion.jda.api.interactions.commands.build.CommandData;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
-
-import java.time.temporal.TemporalField;
 
 public class PingCommand extends AbstractCommand {
 

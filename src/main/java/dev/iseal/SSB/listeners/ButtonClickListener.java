@@ -3,10 +3,14 @@ package dev.iseal.SSB.listeners;
 import dev.iseal.SSB.utils.Utils;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
+import net.dv8tion.jda.internal.utils.JDALogger;
+import org.slf4j.Logger;
 
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -20,8 +24,9 @@ public class ButtonClickListener extends ListenerAdapter {
         return instance;
     }
     private ButtonClickListener() {}
-
     private final Map<String, Consumer<ButtonInteractionEvent>> consumerMap = new HashMap<>();
+    private final Logger log = JDALogger.getLog(getClass());
+    private final ThreadPoolExecutor messageThreadPool = (ThreadPoolExecutor) Executors.newCachedThreadPool();
 
     @Override
     public void onButtonInteraction(ButtonInteractionEvent event) {
@@ -32,7 +37,14 @@ public class ButtonClickListener extends ListenerAdapter {
 
         Consumer<ButtonInteractionEvent> consumer = consumerMap.get(id);
         if (consumer != null) {
-            consumer.accept(event);
+            messageThreadPool.execute(() -> {
+                try {
+                    consumer.accept(event);
+                } catch (Exception e) {
+                    log.error("Failed to handle button interaction {}: {}", id, e.getMessage());
+                    event.reply("An error occurred while processing your button interaction.").setEphemeral(true).queue();
+                }
+            });
         }
     }
 

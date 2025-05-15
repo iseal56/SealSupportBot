@@ -23,12 +23,13 @@ public class CommandRegistry {
 
     private final Logger log = JDALogger.getLog("SBB-CommandRegistry");
     private final HashMap<String, AbstractCommand> registeredCommands = new HashMap<>();
+    private final FeatureRegistry featureRegistry = FeatureRegistry.getInstance();
 
     private CommandRegistry() {}
 
     public void init() {
         // Register all commands in the package
-        Utils.findAllClassesInPackage("dev.iseal.SSB.commands", AbstractCommand.class)
+        Utils.findAllClassesInPackage("dev.iseal.SSB.systems", AbstractCommand.class)
                 .forEach(commandClass -> {
                     try {
                         // Instantiate the command class
@@ -36,7 +37,7 @@ public class CommandRegistry {
                         // Register the command
                         registerCommand(command.getCommand().getName(), command);
                     } catch (Exception e) {
-                        log.error("Failed to register command {}: {}", commandClass.getName(), e.getMessage());
+                        log.error("Failed to register command {}: {} {}", commandClass.getName(), e.getMessage(), e.getStackTrace());
                     }
                 });
 
@@ -56,6 +57,7 @@ public class CommandRegistry {
         // Register the command with the command object
         log.info("Registering command: {}", commandName);
         registeredCommands.put(commandName, commandObject);
+        featureRegistry.registerFeature("command." + commandName, true);
     }
 
     public boolean isCommandRegistered(String commandName) {

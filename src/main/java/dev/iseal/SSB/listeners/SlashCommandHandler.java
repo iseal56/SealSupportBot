@@ -1,6 +1,7 @@
 package dev.iseal.SSB.listeners;
 
 import dev.iseal.SSB.registries.CommandRegistry;
+import dev.iseal.SSB.registries.FeatureRegistry;
 import dev.iseal.SSB.utils.abstracts.AbstractCommand;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
@@ -15,6 +16,7 @@ public class SlashCommandHandler extends ListenerAdapter {
     private final CommandRegistry registry = CommandRegistry.getInstance();
     private final Logger log = JDALogger.getLog("SBB-SCH");
     private final ThreadPoolExecutor commandThreadPool = (ThreadPoolExecutor) Executors.newCachedThreadPool();
+    private final FeatureRegistry featureRegistry = FeatureRegistry.getInstance();
 
     @Override
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
@@ -23,6 +25,13 @@ public class SlashCommandHandler extends ListenerAdapter {
         String commandString = event.getCommandString();
         String userDisplayName = event.getUser().getName();
         log.info("Received command {} by {}", commandString, userDisplayName);
+        log.info("Checking if command {} is registered and enabled.", commandName);
+        if (!featureRegistry.isFeatureEnabled("command." + commandName)) {
+            log.info("Command {} is disabled.", commandName);
+            event.reply("This command is disabled. Ask an admin for more info.").setEphemeral(true).queue();
+            return;
+        }
+
         // Check if the command is registered and handle it
         AbstractCommand command = registry.getCommand(commandName);
         if (command != null) {

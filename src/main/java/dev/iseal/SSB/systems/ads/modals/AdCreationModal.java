@@ -1,4 +1,4 @@
-package dev.iseal.SSB.modals;
+package dev.iseal.SSB.systems.ads.modals;
 
 import dev.iseal.SSB.managers.AdDataManager;
 import dev.iseal.SSB.utils.abstracts.AbstractModal;
@@ -7,7 +7,6 @@ import net.dv8tion.jda.api.interactions.components.ActionRow;
 import net.dv8tion.jda.api.interactions.components.text.TextInput;
 import net.dv8tion.jda.api.interactions.components.text.TextInputStyle;
 import net.dv8tion.jda.api.interactions.modals.Modal;
-import net.dv8tion.jda.api.utils.cache.CacheFlag;
 import net.dv8tion.jda.internal.utils.JDALogger;
 import org.slf4j.Logger;
 

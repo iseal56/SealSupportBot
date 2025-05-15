@@ -1,6 +1,5 @@
-package dev.iseal.SSB.modals;
+package dev.iseal.SSB.systems.ads.modals;
 
-import dev.iseal.SSB.SSBMain;
 import dev.iseal.SSB.managers.AdDataManager;
 import dev.iseal.SSB.utils.Utils;
 import dev.iseal.SSB.utils.abstracts.AbstractModal;

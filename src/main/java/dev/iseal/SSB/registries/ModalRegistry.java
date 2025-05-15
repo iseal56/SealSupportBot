@@ -19,17 +19,18 @@ public class ModalRegistry {
     }
 
     public void init() {
-        Utils.findAllClassesInPackage("dev.iseal.SSB.modals", AbstractModal.class)
+        Utils.findAllClassesInPackage("dev.iseal.SSB.systems", AbstractModal.class)
                 .stream().map(clazz -> (Class<? extends AbstractModal>) clazz)
                 .forEach(modalClass -> {
                     try {
                         //instantiate the class
                         AbstractModal modal = modalClass.newInstance();
 
+                        log.info("Registering modal " + modalClass.getSimpleName());
                         // then get the modal with the static method, creating it.
                         AbstractModal.getModal(modalClass);
                     } catch (Exception e) {
-                        log.error("Failed to register command {}: {}", modalClass.getName(), e.getMessage());
+                        log.error("Failed to register modal {}: {}", modalClass.getName(), e.getMessage());
                     }
                 });
     }

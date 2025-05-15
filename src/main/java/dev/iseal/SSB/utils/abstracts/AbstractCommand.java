@@ -15,7 +15,6 @@ public abstract class AbstractCommand {
         command.setContexts(InteractionContextType.GUILD);
         this.command = command;
         this.doesDefer = doesDefer;
-
     }
 
     public CommandData getCommand() {

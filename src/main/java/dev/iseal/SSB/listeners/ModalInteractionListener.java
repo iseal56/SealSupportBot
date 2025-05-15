@@ -8,6 +8,8 @@ import org.slf4j.Logger;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.Consumer;
 
 public class ModalInteractionListener extends ListenerAdapter {
@@ -21,6 +23,7 @@ public class ModalInteractionListener extends ListenerAdapter {
     }
     private ModalInteractionListener() {}
 
+    private final ThreadPoolExecutor modalThreadPool = (ThreadPoolExecutor) Executors.newCachedThreadPool();
     private final Map<String, Consumer<ModalInteractionEvent>> consumerMap = new HashMap<>();
     private final Logger log = JDALogger.getLog("SBB-MIL");
 
@@ -30,7 +33,14 @@ public class ModalInteractionListener extends ListenerAdapter {
 
         Consumer<ModalInteractionEvent> consumer = consumerMap.get(id);
         if (consumer != null) {
-            consumer.accept(event);
+            modalThreadPool.execute(() -> {
+                try {
+                    consumer.accept(event);
+                } catch (Exception e) {
+                    log.error("Failed to handle modal interaction {}: {}", id, e.getMessage());
+                    event.reply("An error occurred while processing your modal interaction.").setEphemeral(true).queue();
+                }
+            });
         } else {
             // we have to reply to the event or discord gets mad
             event.reply("Unknown modal interaction: " + id+". Report this to an admin.").setEphemeral(true).queue();
