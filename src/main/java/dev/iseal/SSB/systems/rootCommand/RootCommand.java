@@ -4,10 +4,14 @@ import de.leonhard.storage.Yaml;
 import dev.iseal.SSB.registries.FeatureRegistry;
 import dev.iseal.SSB.utils.Utils;
 import dev.iseal.SSB.utils.abstracts.AbstractCommand;
+import dev.iseal.SSB.utils.interfaces.Feature;
+import dev.iseal.SSB.utils.utils.RuntimeInterpreter;
+import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
+import net.dv8tion.jda.api.utils.AttachedFile;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -37,10 +41,23 @@ public class RootCommand extends AbstractCommand {
                                                 "feature",
                                                 "The feature to enable"
                                         ),
-                                new SubcommandData("listfeatures", "List all features")
+                                new SubcommandData("listfeatures", "List all features"),
+                                new SubcommandData("eval", "Evaluate java code")
+                                        .addOption(
+                                                OptionType.STRING,
+                                                "code",
+                                                "The code to evaluate",
+                                                false
+                                        )
+                                        .addOption(
+                                                OptionType.ATTACHMENT,
+                                                "code_file",
+                                                "The code to evaluate from a file",
+                                                false
+                                        )
                         )
                 ,
-                true
+                false
         );
         ArrayList<String> defaultRootIDs = new ArrayList<>();
         defaultRootIDs.add("398908171357519872");
@@ -51,7 +68,7 @@ public class RootCommand extends AbstractCommand {
     @Override
     protected void actuallyHandleCommand(SlashCommandInteractionEvent event) {
         String subcommand = event.getSubcommandName();
-        event.reply("Processing..").setEphemeral(true).queue();
+        event.reply("Processing command...").queue();
         if (!Arrays.stream(rootIDs).anyMatch(id -> id.equals(event.getUser().getId()))) {
             // user is not authorized to use this command.
             event.getHook().editOriginal("You are not authorized to use this command.").queue();
@@ -66,6 +83,7 @@ public class RootCommand extends AbstractCommand {
             case "disablefeature" -> handleDisableFeature(event);
             case "enablefeature" -> handleEnableFeature(event);
             case "listfeatures" -> handleListFeatures(event);
+            case "eval" -> handleEval(event);
             default -> event.getHook().editOriginal("Unknown subcommand.").queue();
         }
     }
@@ -95,6 +113,10 @@ public class RootCommand extends AbstractCommand {
 
     private void handleDisableFeature(SlashCommandInteractionEvent event) {
         String featureName = event.getOption("feature").getAsString();
+        if (featureName.equals(this.getFeatureName())) {
+            event.getHook().editOriginal("You cannot disable this command.").queue();
+            return; // don't disable this command
+        }
         if (featureRegistry.isFeatureEnabled(featureName)) {
             featureRegistry.disableFeature(featureName);
             event.getHook().editOriginal("Feature " + featureName + " disabled.").queue();
@@ -114,8 +136,8 @@ public class RootCommand extends AbstractCommand {
     }
 
     private void handleListFeatures(SlashCommandInteractionEvent event) {
-        List<String> features = featureRegistry.listFeatures(false);
-        List<String> enabledFeatures = featureRegistry.listFeatures(true);
+        List<String> features = featureRegistry.listFeatures(false).stream().map(Feature::getFeatureName).toList();
+        List<String> enabledFeatures = featureRegistry.listFeatures(true).stream().map(Feature::getFeatureName).toList();
         StringBuilder response = new StringBuilder("Features: ");
 
         for (String feature : features) {
@@ -131,6 +153,49 @@ public class RootCommand extends AbstractCommand {
         }
 
         event.getHook().editOriginal(response.toString()).queue();
+    }
+
+    private void handleEval(SlashCommandInteractionEvent event) {
+        String codeStr = event.getOption("code") != null ? event.getOption("code").getAsString() : null;
+        Message.Attachment codeFile = event.getOption("code_file") != null ? event.getOption("code_file").getAsAttachment() : null;
+
+        if (codeStr == null && codeFile == null) {
+            event.getHook().editOriginal("No code provided.").queue();
+            return;
+        }
+        if (codeStr != null && codeFile != null) {
+            event.getHook().editOriginal("You can only provide one of code or code_file.").queue();
+            return;
+        }
+
+        if (codeFile != null) {
+            // Download the file and read the contents
+            File tempFile = new File(System.getProperty("java.io.tmpdir") + File.separator + codeFile.getFileName());
+            codeFile.getProxy().downloadToFile(tempFile)
+                    .thenAccept(file -> {
+                        try {
+                            String code = Utils.readFile(file);
+                            Object result = RuntimeInterpreter.evaluate(code);
+                            event.getHook().editOriginal("Code evaluated successfully: " + result).queue();
+                            file.delete(); // Clean up the temp file
+                        } catch (Exception e) {
+                            event.getHook().editOriginal("Failed to evaluate code: " + e.getMessage()).queue();
+                            e.printStackTrace();
+                        }
+                    })
+                    .exceptionally(e -> {
+                        event.getHook().editOriginal("Failed to download file: " + e.getMessage()).queue();
+                        return null;
+                    });
+        } else {
+            try {
+                Object result = RuntimeInterpreter.evaluate(codeStr);
+                event.getHook().editOriginal("Code evaluated successfully: " + result).queue();
+            } catch (Exception e) {
+                event.getHook().editOriginal("Failed to evaluate code: " + e.getMessage()).queue();
+                e.printStackTrace();
+            }
+        }
     }
 
 }

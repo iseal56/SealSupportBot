@@ -4,10 +4,12 @@ import de.leonhard.storage.Yaml;
 import dev.iseal.SSB.SSBMain;
 import dev.iseal.SSB.listeners.MessageListener;
 import dev.iseal.SSB.registries.FeatureRegistry;
+import dev.iseal.SSB.utils.interfaces.Feature;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import net.dv8tion.jda.api.entities.sticker.Sticker;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.exceptions.InsufficientPermissionException;
 import net.dv8tion.jda.internal.utils.JDALogger;
@@ -18,7 +20,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 
-public class StopReplyPing {
+public class StopReplyPing extends Feature {
 
     private static final Logger log = JDALogger.getLog(StopReplyPing.class);
 
@@ -43,11 +45,11 @@ public class StopReplyPing {
                 bannedIDs.add(Long.valueOf((String)id));
             }
         });
-        featureRegistry.registerFeature("feature.stopReplyPing", true);
+        registerFeature();
     }
 
     private void execute(MessageReceivedEvent event) {
-        if (!featureRegistry.isFeatureEnabled("feature.stopReplyPing")) {
+        if (!featureRegistry.isFeatureEnabled(getFeatureName())) {
             return; // feature is disabled
         }
         Message referenced = event.getMessage().getReferencedMessage();
@@ -123,6 +125,11 @@ public class StopReplyPing {
         } catch (UnsupportedOperationException e) {
             // ignore, user is a bot (how the fuck did this happen?)
         }
+    }
+
+    @Override
+    public String getFeatureName() {
+        return "feature.system.stopReplyPing";
     }
 
 }

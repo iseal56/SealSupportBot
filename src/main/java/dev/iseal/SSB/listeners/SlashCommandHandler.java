@@ -26,7 +26,7 @@ public class SlashCommandHandler extends ListenerAdapter {
         String userDisplayName = event.getUser().getName();
         log.info("Received command {} by {}", commandString, userDisplayName);
         log.info("Checking if command {} is registered and enabled.", commandName);
-        if (!featureRegistry.isFeatureEnabled("command." + commandName)) {
+        if (!featureRegistry.isFeatureEnabled("feature.command." + commandName)) {
             log.info("Command {} is disabled.", commandName);
             event.reply("This command is disabled. Ask an admin for more info.").setEphemeral(true).queue();
             return;

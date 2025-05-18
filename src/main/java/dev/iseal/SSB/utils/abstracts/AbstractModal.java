@@ -1,6 +1,7 @@
 package dev.iseal.SSB.utils.abstracts;
 
 import dev.iseal.SSB.listeners.ModalInteractionListener;
+import dev.iseal.SSB.utils.interfaces.Feature;
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent;
 import net.dv8tion.jda.api.interactions.modals.Modal;
 

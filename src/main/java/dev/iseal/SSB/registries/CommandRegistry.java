@@ -23,7 +23,6 @@ public class CommandRegistry {
 
     private final Logger log = JDALogger.getLog("SBB-CommandRegistry");
     private final HashMap<String, AbstractCommand> registeredCommands = new HashMap<>();
-    private final FeatureRegistry featureRegistry = FeatureRegistry.getInstance();
 
     private CommandRegistry() {}
 
@@ -57,7 +56,6 @@ public class CommandRegistry {
         // Register the command with the command object
         log.info("Registering command: {}", commandName);
         registeredCommands.put(commandName, commandObject);
-        featureRegistry.registerFeature("command." + commandName, true);
     }
 
     public boolean isCommandRegistered(String commandName) {

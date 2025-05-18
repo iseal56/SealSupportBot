@@ -8,16 +8,21 @@ import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.IPermissionHolder;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.User;
+import net.dv8tion.jda.internal.utils.JDALogger;
 import org.reflections.Reflections;
 import org.reflections.scanners.SubTypesScanner;
 import org.reflections.util.ClasspathHelper;
 import org.reflections.util.ConfigurationBuilder;
+import org.slf4j.Logger;
 
+import java.io.File;
+import java.nio.file.Files;
 import java.util.Set;
 
 public class Utils {
 
     private static final Json tempData = new Json("tempData.json", System.getProperty("user.dir") + "/data/tempData");
+    private static final Logger log = JDALogger.getLog(Utils.class);
 
     /**
      * Find all classes in a package that extend a given class
@@ -71,6 +76,16 @@ public class Utils {
         SSBMain.getJDA().openPrivateChannelById(userId)
                 .flatMap(channel -> channel.sendMessageEmbeds(embed.build()))
                 .queue();
+    }
+
+    public static String readFile(File file) {
+        try {
+            return Files.readString(file.toPath());
+        } catch (java.io.IOException e) {
+            log.error("Failed to read file {}: {}", file.getName(), e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
     }
 
     public static void addTempFileData(String key, Object value) {
