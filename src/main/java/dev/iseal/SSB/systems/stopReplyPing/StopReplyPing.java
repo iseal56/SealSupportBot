@@ -2,14 +2,14 @@ package dev.iseal.SSB.systems.stopReplyPing;
 
 import de.leonhard.storage.Yaml;
 import dev.iseal.SSB.SSBMain;
-import dev.iseal.SSB.listeners.MessageListener;
 import dev.iseal.SSB.registries.FeatureRegistry;
+import dev.iseal.SSB.utils.abstracts.AbstractMessageListener;
 import dev.iseal.SSB.utils.interfaces.Feature;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
+import net.dv8tion.jda.api.entities.Role;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
-import net.dv8tion.jda.api.entities.sticker.Sticker;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.exceptions.InsufficientPermissionException;
 import net.dv8tion.jda.internal.utils.JDALogger;
@@ -20,7 +20,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 
-public class StopReplyPing extends Feature {
+public class StopReplyPing extends AbstractMessageListener {
 
     private static final Logger log = JDALogger.getLog(StopReplyPing.class);
 
@@ -30,28 +30,39 @@ public class StopReplyPing extends Feature {
     }
 
     private final Yaml yaml = new Yaml("stopReplyPings.yml", System.getProperty("user.dir")+ File.separator + "config" + File.separator + "stopReplyPings");
-    private final ArrayList<Long> bannedIDs = new ArrayList<>();
-    private final FeatureRegistry featureRegistry = FeatureRegistry.getInstance();
+    private final ArrayList<Long> protectedIDs = new ArrayList<>();
+    private final ArrayList<Long> bypassIDs = new ArrayList<>();
+    private final ArrayList<Long> bypassRoleIDs = new ArrayList<>();
 
-    public void init() {
-        MessageListener.getInstance().registerMessageConsumer(this::execute);
+    public StopReplyPing() {
+        super("system.stopReplyPing");
         ArrayList<Long> defaultList = new ArrayList<>();
         defaultList.add(398908171357519872L);
-        yaml.setDefault("bannedIDs", defaultList);
+        yaml.setDefault("protectedIDs", defaultList);
+        defaultList = new ArrayList<>();
+        yaml.setDefault("bypassIDs", defaultList);
+        defaultList.add(1219921802323689622L);
+        yaml.setDefault("bypassRoleIDs", defaultList);
         yaml.setDefault("timeoutTime", 120);
         yaml.setDefault("logChannelID", 0L);
-        yaml.getListParameterized("bannedIDs").forEach(id -> {
+        yaml.getListParameterized("protectedIDs").forEach(id -> {
             if (id != null) {
-                bannedIDs.add(Long.valueOf((String)id));
+                protectedIDs.add(Long.valueOf(id.toString()));
             }
         });
-        registerFeature();
+        yaml.getListParameterized("bypassIDs").forEach(id -> {
+            if (id != null) {
+                bypassIDs.add(Long.valueOf(id.toString()));
+            }
+        });
+        yaml.getListParameterized("bypassRoleIDs").forEach(id -> {
+            if (id != null) {
+                bypassRoleIDs.add(Long.valueOf(id.toString()));
+            }
+        });
     }
 
-    private void execute(MessageReceivedEvent event) {
-        if (!featureRegistry.isFeatureEnabled(getFeatureName())) {
-            return; // feature is disabled
-        }
+    public void handleMessage(MessageReceivedEvent event) {
         Message referenced = event.getMessage().getReferencedMessage();
         if (referenced == null) {
             return;
@@ -59,8 +70,16 @@ public class StopReplyPing extends Feature {
         // get the original author's ID
         long originalAuthorId = referenced.getAuthor().getIdLong();
 
-        boolean isProtectedUser = bannedIDs.stream()
+        boolean isProtectedUser = protectedIDs.stream()
                 .anyMatch(id -> id.equals(originalAuthorId));
+
+        boolean isBypassUser = bypassIDs.stream()
+                .anyMatch(id -> id.equals(originalAuthorId));
+
+        boolean hasBypassRole = event.getMember().getUnsortedRoles()
+                .stream()
+                .map(Role::getIdLong)
+                .anyMatch(roleId -> bypassRoleIDs.stream().anyMatch(roleId::equals));
 
         if (!isProtectedUser) {
             return;
@@ -81,11 +100,12 @@ public class StopReplyPing extends Feature {
             return;
         }
 
-        if (member.getUser().isBot()) {
-            return; // don't time out bots
+        if (member.getUser().isBot() || isBypassUser || hasBypassRole) {
+            log.debug("User {} is a bot or has bypass permissions. Ignoring.", member.getEffectiveName());
+            return; // don't time out bypassed users
         }
 
-        log.info("Stopping reply ping from user {} to user {}", member.getEffectiveName(), referenced.getAuthor().getName());
+        log.debug("Stopping reply ping from user {} to user {}", member.getEffectiveName(), referenced.getAuthor().getName());
         // timeout the user
         member.timeoutFor(yaml.getLong("timeoutTime"), TimeUnit.SECONDS).reason("Reply-Pinging to a protected user").queue();
 
@@ -131,5 +151,4 @@ public class StopReplyPing extends Feature {
     public String getFeatureName() {
         return "feature.system.stopReplyPing";
     }
-
 }

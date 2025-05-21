@@ -3,6 +3,7 @@ package dev.iseal.SSB.registries;
 import dev.iseal.SSB.SSBMain;
 import dev.iseal.SSB.utils.Utils;
 import dev.iseal.SSB.utils.abstracts.AbstractCommand;
+import dev.iseal.SSB.utils.interfaces.Feature;
 import net.dv8tion.jda.api.interactions.commands.Command;
 import net.dv8tion.jda.api.interactions.commands.build.CommandData;
 import net.dv8tion.jda.internal.utils.JDALogger;
@@ -32,7 +33,7 @@ public class CommandRegistry {
                 .forEach(commandClass -> {
                     try {
                         // Instantiate the command class
-                        AbstractCommand command = (AbstractCommand) commandClass.getDeclaredConstructor().newInstance();
+                        AbstractCommand command = Feature.getFeatureInstance((Class<? extends AbstractCommand>) commandClass);
                         // Register the command
                         registerCommand(command.getCommand().getName(), command);
                     } catch (Exception e) {

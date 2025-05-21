@@ -7,8 +7,8 @@ import dev.iseal.SSB.listeners.SlashCommandHandler;
 import dev.iseal.SSB.managers.AdDataManager;
 import dev.iseal.SSB.registries.CommandRegistry;
 import dev.iseal.SSB.registries.FeatureRegistry;
+import dev.iseal.SSB.registries.MessageListenerRegistry;
 import dev.iseal.SSB.registries.ModalRegistry;
-import dev.iseal.SSB.systems.stopReplyPing.StopReplyPing;
 import dev.iseal.SSB.utils.Utils;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
@@ -22,11 +22,13 @@ import org.slf4j.Logger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
 import java.util.Arrays;
 
 public class SSBMain {
 
     private static final Logger log = JDALogger.getLog(SSBMain.class);
+
     private static JDA jda;
 
     public static void main(String[] args) {
@@ -59,18 +61,15 @@ public class SSBMain {
         FeatureRegistry.getInstance().init();
         log.info("Critical registries initialized!");
 
-        log.info("Initializing SSB commands...");
+        log.info("Initializing SSB registries...");
         CommandRegistry.getInstance().init();
         ModalRegistry.getInstance().init();
-        log.info("SSB commands initialized!");
+        MessageListenerRegistry.getInstance().init();
+        log.info("SSB registries initialized!");
 
         log.info("Initializing SSB data managers...");
         AdDataManager.getInstance();
         log.info("SSB data managers initialized!");
-
-        log.info("Initializing SSB systems...");
-        StopReplyPing.getInstance().init();
-        log.info("SSB systems initialized!");
 
         log.info("Checking if bot has been rebooted manually...");
         if (Arrays.stream(args).anyMatch(s -> s.equalsIgnoreCase("--reboot"))) {
@@ -111,6 +110,7 @@ public class SSBMain {
     private static void checkForReboot() {
         String id = Utils.getTempFileData("root-reboot-requested-by", "");
         Long time = Utils.getTempFileData("root-reboot-requested-at", 0L);
+        long now = Instant.now().getEpochSecond();
         if (id == null || id.isEmpty()) {
             return;
         }
@@ -121,7 +121,7 @@ public class SSBMain {
         User user = jda.retrieveUserById(id).complete();
         PrivateChannel channel = user.openPrivateChannel().complete();
         // check if the reboot was requested more than 5 minutes ago
-        if (System.currentTimeMillis() - time > 5 * 60 * 1000) {
+        if (now - time > 5 * 60 * 1000) {
             log.error("Reboot requested by {} was more than 5 minutes ago.", id);
             log.error("There might be an issue with the bot.");
 
@@ -130,10 +130,11 @@ public class SSBMain {
             return;
         }
 
-        int secondsTaken = (int) ((System.currentTimeMillis() - time) / 1000);
+        int secondsTaken = (int) (now - time) / 1000;
         float minutesTaken = (float) secondsTaken / 60;
         Utils.removeTempFileData("root-reboot-requested-by");
         Utils.removeTempFileData("root-reboot-requested-at");
+        log.debug("Reboot requested by {} complete! It took {} seconds ({} minutes). Requested at {}", id, secondsTaken, minutesTaken, time);
         // dm the user
         channel.sendMessage("The reboot requested <t:"+time+":F> has been completed. It took "+secondsTaken+" seconds ("+minutesTaken+" minutes).").queue();
         log.info("Reboot requested by {} complete!", id);

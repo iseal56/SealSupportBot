@@ -54,6 +54,14 @@ public class FeatureRegistry {
         }
     }
 
+    public boolean isFeatureRegistered(String featureName) {
+        return registeredFeatures.containsKey(featureName);
+    }
+
+    public boolean isFeatureRegistered(Feature feature) {
+        return registeredFeatures.containsKey(feature.getFeatureName());
+    }
+
     public boolean isFeatureEnabled(Feature feature) {
         return enabledFeatures.contains(feature);
     }

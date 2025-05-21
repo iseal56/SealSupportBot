@@ -1,5 +1,7 @@
 package dev.iseal.SSB.listeners;
 
+import dev.iseal.SSB.registries.FeatureRegistry;
+import dev.iseal.SSB.utils.abstracts.AbstractMessageListener;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.internal.utils.JDALogger;
@@ -19,7 +21,8 @@ public class MessageListener extends ListenerAdapter {
     }
 
     private final Logger log = JDALogger.getLog(getClass());
-    private final List<Consumer<MessageReceivedEvent>> consumerList = new ArrayList<>();
+    private final List<AbstractMessageListener> consumerList = new ArrayList<>();
+    private final FeatureRegistry featureRegistry = FeatureRegistry.getInstance();
     private MessageListener() {
         // private constructor to prevent instantiation
     }
@@ -29,15 +32,22 @@ public class MessageListener extends ListenerAdapter {
     public void onMessageReceived(MessageReceivedEvent event) {
         messageThreadPool.execute(() -> {
             try {
-                consumerList.forEach(consumer -> consumer.accept(event));
+                consumerList.forEach(consumer -> {
+                    if (featureRegistry.isFeatureEnabled(consumer.getFeatureName())) {
+                        consumer.handleMessage(event);
+                    } else {
+                        log.info("Feature {} is disabled. Skipping message handling.", consumer.getFeatureName());
+                    }
+                });
             } catch (Exception e) {
                 // fail silently
                 log.error("Failed to handle message received event: {}", e.getMessage());
+                e.printStackTrace();
             }
         });
     }
 
-    public void registerMessageConsumer(Consumer<MessageReceivedEvent> consumer) {
+    public void registerMessageConsumer(AbstractMessageListener consumer) {
         consumerList.add(consumer);
     }
 

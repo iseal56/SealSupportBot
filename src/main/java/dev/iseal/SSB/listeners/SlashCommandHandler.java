@@ -8,6 +8,7 @@ import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.internal.utils.JDALogger;
 import org.slf4j.Logger;
 
+import java.util.Arrays;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 
@@ -25,9 +26,9 @@ public class SlashCommandHandler extends ListenerAdapter {
         String commandString = event.getCommandString();
         String userDisplayName = event.getUser().getName();
         log.info("Received command {} by {}", commandString, userDisplayName);
-        log.info("Checking if command {} is registered and enabled.", commandName);
+        log.debug("Checking if command {} is registered and enabled.", commandName);
         if (!featureRegistry.isFeatureEnabled("feature.command." + commandName)) {
-            log.info("Command {} is disabled.", commandName);
+            log.debug("Command {} is disabled.", commandName);
             event.reply("This command is disabled. Ask an admin for more info.").setEphemeral(true).queue();
             return;
         }
@@ -40,7 +41,8 @@ public class SlashCommandHandler extends ListenerAdapter {
                     command.handleCommand(event);
                 } catch (Exception e) {
                     log.error("Failed to handle command {}: {}", commandString, e.getMessage());
-                    event.reply("An error occurred while processing your command.").setEphemeral(true).queue();
+                    Arrays.stream(e.getStackTrace()).forEach(element -> log.error(element.toString()));
+                    event.getHook().editOriginal("An error occurred while processing your command.").queue();
                 }
             });
         } else {

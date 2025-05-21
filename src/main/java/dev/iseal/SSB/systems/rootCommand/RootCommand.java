@@ -6,14 +6,19 @@ import dev.iseal.SSB.utils.Utils;
 import dev.iseal.SSB.utils.abstracts.AbstractCommand;
 import dev.iseal.SSB.utils.interfaces.Feature;
 import dev.iseal.SSB.utils.utils.RuntimeInterpreter;
+import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.utils.AttachedFile;
+import net.dv8tion.jda.internal.utils.JDALogger;
+import org.slf4j.Logger;
 
+import java.awt.*;
 import java.io.File;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -23,6 +28,7 @@ public class RootCommand extends AbstractCommand {
     private final Yaml yaml = new Yaml("rootCommandConfig.yml", System.getProperty("user.dir")+ File.separator + "config" + File.separator + "rootCommand");
     private final String[] rootIDs;
     private final FeatureRegistry featureRegistry = FeatureRegistry.getInstance();
+    private final Logger log = JDALogger.getLog(getClass());
 
     public RootCommand() {
         super(
@@ -41,7 +47,13 @@ public class RootCommand extends AbstractCommand {
                                                 "feature",
                                                 "The feature to enable"
                                         ),
-                                new SubcommandData("listfeatures", "List all features"),
+                                new SubcommandData("listfeatures", "List all features")
+                                        .addOption(
+                                                OptionType.BOOLEAN,
+                                                "onlyenabled",
+                                                "Only list enabled features",
+                                                false
+                                        ),
                                 new SubcommandData("eval", "Evaluate java code")
                                         .addOption(
                                                 OptionType.STRING,
@@ -90,8 +102,9 @@ public class RootCommand extends AbstractCommand {
 
     private void handleReboot(SlashCommandInteractionEvent event) {
         event.getHook().editOriginal("Rebooting...").complete();
+        log.debug("Rebooting... Requested at: " + System.currentTimeMillis());
         Utils.addTempFileData("root-reboot-requested-by", event.getMember().getId());
-        Utils.addTempFileData("root-reboot-requested-at", System.currentTimeMillis());
+        Utils.addTempFileData("root-reboot-requested-at", Instant.now().getEpochSecond());
 
         // Start a new process before shutting down
         try {
@@ -117,6 +130,10 @@ public class RootCommand extends AbstractCommand {
             event.getHook().editOriginal("You cannot disable this command.").queue();
             return; // don't disable this command
         }
+        if (!featureRegistry.isFeatureRegistered(featureName)) {
+            event.getHook().editOriginal("Feature " + featureName + " is not registered.").queue();
+            return;
+        }
         if (featureRegistry.isFeatureEnabled(featureName)) {
             featureRegistry.disableFeature(featureName);
             event.getHook().editOriginal("Feature " + featureName + " disabled.").queue();
@@ -127,6 +144,10 @@ public class RootCommand extends AbstractCommand {
 
     private void handleEnableFeature(SlashCommandInteractionEvent event) {
         String featureName = event.getOption("feature").getAsString();
+        if (!featureRegistry.isFeatureRegistered(featureName)) {
+            event.getHook().editOriginal("Feature " + featureName + " is not registered.").queue();
+            return;
+        }
         if (!featureRegistry.isFeatureEnabled(featureName)) {
             featureRegistry.enableFeature(featureName);
             event.getHook().editOriginal("Feature " + featureName + " enabled.").queue();
@@ -136,23 +157,34 @@ public class RootCommand extends AbstractCommand {
     }
 
     private void handleListFeatures(SlashCommandInteractionEvent event) {
-        List<String> features = featureRegistry.listFeatures(false).stream().map(Feature::getFeatureName).toList();
-        List<String> enabledFeatures = featureRegistry.listFeatures(true).stream().map(Feature::getFeatureName).toList();
-        StringBuilder response = new StringBuilder("Features: ");
+        boolean onlyEnabled = event.getOption("onlyenabled") != null && event.getOption("onlyenabled").getAsBoolean();
+        List<String> features = new ArrayList<>(featureRegistry.listFeatures(false).stream().map(Feature::getFeatureName).toList());
+        List<String> enabledFeatures = new ArrayList<>(featureRegistry.listFeatures(true).stream().map(Feature::getFeatureName).toList());
+        features.sort(String::compareTo);
+        enabledFeatures.sort(String::compareTo);
+        StringBuilder response = new StringBuilder();
 
         for (String feature : features) {
-            response.append(feature);
-            if (!enabledFeatures.contains(feature)) {
-                response.append(" (disabled)");
+            if (enabledFeatures.contains(feature)) {
+                response.append(feature)
+                        .append(", \n");
+            } else if (!onlyEnabled) {
+                response.append(feature)
+                        .append(" (disabled)")
+                        .append(", \n");
             }
-            response.append(", ");
         }
 
         if (response.length() > 2) {
             response.setLength(response.length() - 2); // Remove the last comma and space
         }
 
-        event.getHook().editOriginal(response.toString()).queue();
+        event.getHook().editOriginal("Done").queue();
+        EmbedBuilder embed = new EmbedBuilder();
+        embed.setTitle("Features");
+        embed.setDescription(response.toString());
+        embed.setColor(Color.GREEN);
+        event.getHook().editOriginalEmbeds(embed.build()).queue();
     }
 
     private void handleEval(SlashCommandInteractionEvent event) {
@@ -192,8 +224,18 @@ public class RootCommand extends AbstractCommand {
                 Object result = RuntimeInterpreter.evaluate(codeStr);
                 event.getHook().editOriginal("Code evaluated successfully: " + result).queue();
             } catch (Exception e) {
-                event.getHook().editOriginal("Failed to evaluate code: " + e.getMessage()).queue();
-                e.printStackTrace();
+                StringBuilder sb = new StringBuilder();
+                sb.append("Error: ").append(e.getMessage()).append("\n");
+                sb.append("Stacktrace: \n");
+                for (StackTraceElement element : e.getStackTrace()) {
+                    sb.append(element.toString()).append("\n");
+                }
+                EmbedBuilder embed = new EmbedBuilder();
+                embed.setTitle("Error in eval");
+                embed.setDescription(sb.toString());
+                embed.setColor(Color.RED);
+                event.getHook().editOriginal("Done").queue();
+                event.getHook().editOriginalEmbeds(embed.build()).queue();
             }
         }
     }
