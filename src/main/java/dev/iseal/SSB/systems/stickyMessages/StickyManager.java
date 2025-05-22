@@ -39,6 +39,8 @@ public class StickyManager extends AbstractMessageListener {
 
     private StickyManager() {
         super("system.stickyMessages");
+        // TODO: enable this on release
+        enabled = false;
         json.setDefault("stickyMessages", new HashMap<String, String>());
         Map<String, String> storedMessages = json.getMapParameterized("stickyMessages");
         storedMessages.forEach((channelIdStr, message) -> {

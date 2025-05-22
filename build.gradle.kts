@@ -25,6 +25,8 @@ dependencies {
     implementation("ch.qos.logback:logback-classic:$logbackVersion")
     implementation("org.reflections:reflections:0.10.2")
     implementation("com.github.simplix-softworks:simplixstorage:3.2.7")
+    implementation("com.github.docker-java:docker-java:3.5.1")
+    implementation("com.github.docker-java:docker-java-transport-httpclient5:3.5.1")
 }
 
 tasks.withType<JavaCompile> {
