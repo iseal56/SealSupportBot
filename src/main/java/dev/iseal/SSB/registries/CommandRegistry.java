@@ -37,7 +37,12 @@ public class CommandRegistry {
                         // Register the command
                         registerCommand(command.getCommand().getName(), command);
                     } catch (Exception e) {
-                        log.error("Failed to register command {}: {} {}", commandClass.getName(), e.getMessage(), e.getStackTrace());
+                        log.error("Failed to register command {}: {} {}", commandClass.getName(), e.getMessage());
+                        for (StackTraceElement element : e.getStackTrace()) {
+                            log.error("    at {}", element);
+                        }
+                        log.error("The bot will now exit due to a critical error in command registration.");
+                        System.exit(-1);
                     }
                 });
 

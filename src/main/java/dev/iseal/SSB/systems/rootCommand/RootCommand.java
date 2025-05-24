@@ -69,7 +69,8 @@ public class RootCommand extends AbstractCommand {
                                         )
                         )
                 ,
-                false
+                true,
+                true
         );
         ArrayList<String> defaultRootIDs = new ArrayList<>();
         defaultRootIDs.add("398908171357519872");
@@ -80,7 +81,8 @@ public class RootCommand extends AbstractCommand {
     @Override
     protected void actuallyHandleCommand(SlashCommandInteractionEvent event) {
         String subcommand = event.getSubcommandName();
-        event.reply("Processing command...").queue();
+        event.getHook().setEphemeral(true);
+        event.getHook().editOriginal("Processing command...").queue();
         if (!Arrays.stream(rootIDs).anyMatch(id -> id.equals(event.getUser().getId()))) {
             // user is not authorized to use this command.
             event.getHook().editOriginal("You are not authorized to use this command.").queue();

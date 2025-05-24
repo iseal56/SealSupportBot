@@ -27,6 +27,7 @@ public class StickyCommand extends AbstractCommand {
                                         .addOption(OptionType.CHANNEL, "channel", "The channel to remove the sticky message from", true),
                                 new SubcommandData("list", "Lists all sticky messages")
                         ),
+                false,
                 false
         );
     }

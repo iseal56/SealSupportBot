@@ -20,18 +20,28 @@ public abstract class AbstractCommand extends Feature {
      * Flag indicating whether the command should be deferred.
      */
     private final boolean doesDefer;
+    /**
+     * Flag indicating whether the command is ephemeral by default.
+     */
+    private final boolean isEphemeralByDefault;
 
     /**
      * Constructs an AbstractCommand.
      *
      * @param command   The {@link CommandData} for this command.
      * @param doesDefer A boolean indicating whether the command reply should be deferred.
+     * @param isEphemeralByDefault A boolean indicating whether the command reply should be ephemeral by default.
+     *                             <p>
+     *                             WARN: This only applies if {@code doesDefer} is true.
+     *                             If {@code doesDefer} is false, each reply must be set to be ephemeral manually and
+     *                             this option will have no effect.
      */
-    public AbstractCommand(CommandData command, boolean doesDefer) {
+    public AbstractCommand(CommandData command, boolean doesDefer, boolean isEphemeralByDefault) {
         // only allow in guilds
         command.setContexts(InteractionContextType.GUILD);
         this.command = command;
         this.doesDefer = doesDefer;
+        this.isEphemeralByDefault = isEphemeralByDefault;
         registerFeature();
     }
 
@@ -63,8 +73,8 @@ public abstract class AbstractCommand extends Feature {
      */
     public void handleCommand(SlashCommandInteractionEvent event) {
         if (doesDefer) {
-            // Defer the command
-            event.deferReply().queue();
+            // Defer the command and set the ephemeral flag
+            event.deferReply().setEphemeral(isEphemeralByDefault).queue();
         }
 
         // handle it in both cases

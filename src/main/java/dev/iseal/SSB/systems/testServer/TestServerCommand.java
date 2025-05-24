@@ -1,8 +1,11 @@
 package dev.iseal.SSB.systems.testServer;
 
 import de.leonhard.storage.Yaml;
+import dev.iseal.SSB.SSBMain;
 import dev.iseal.SSB.utils.abstracts.AbstractCommand;
 import net.dv8tion.jda.api.entities.Message;
+import net.dv8tion.jda.api.entities.channel.concrete.Category;
+import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
@@ -27,6 +30,7 @@ public class TestServerCommand extends AbstractCommand {
     private final ArrayList<Long> allowedUsers = new ArrayList<>();
     private final Logger log = JDALogger.getLog(getClass());
     private final HashMap<UUID, DockerHandler> servers = new HashMap<>();
+    private final TextChannel logChannel;
 
     public TestServerCommand() {
         super(
@@ -39,6 +43,7 @@ public class TestServerCommand extends AbstractCommand {
                                 new SubcommandData("delete", "Delete a test server")
                                         .addOption(OptionType.STRING, "id", "The ID of the server to delete", true)
                         ),
+                true,
                 true
         );
         log.debug("Initializing TestServerCommand");
@@ -48,6 +53,11 @@ public class TestServerCommand extends AbstractCommand {
         config.getListParameterized("allowedUsers").forEach(
                 user -> allowedUsers.add(Long.parseLong(String.valueOf(user)))
         );
+        logChannel = SSBMain.getJDA().getTextChannelById(config.getString("logChannel"));
+        if (logChannel == null) {
+            log.error("Log channel not found. Please check your config.yml.");
+            throw new IllegalStateException("Log channel not found. Please check your config.yml.");
+        }
         log.debug("Final allowedUsers: {}", allowedUsers);
     }
 
@@ -152,7 +162,7 @@ public class TestServerCommand extends AbstractCommand {
                             event.getHook().editOriginal("Download of " + fileName + " complete (100%). Processing server...").queue();
 
                             log.debug("Initializing DockerHandler for serverId: {}", serverId);
-                            handler = new DockerHandler(localFile, serverId, finalMinecraftVersion);
+                            handler = new DockerHandler(localFile, serverId, finalMinecraftVersion, logChannel);
                             servers.put(serverId, handler);
                             log.debug("DockerHandler created and stored for serverId: {}", serverId);
                             handler.createServer();
@@ -258,7 +268,7 @@ public class TestServerCommand extends AbstractCommand {
                         event.getHook().editOriginal("Download from " + displayLink + " complete. Processing server...").queue();
 
                         log.debug("Initializing DockerHandler for serverId: {}", serverIdForLink);
-                        linkHandler = new DockerHandler(localFile, serverIdForLink, finalMinecraftVersion);
+                        linkHandler = new DockerHandler(localFile, serverIdForLink, finalMinecraftVersion, logChannel);
                         servers.put(serverIdForLink, linkHandler);
                         log.debug("DockerHandler created and stored for serverId: {}", serverIdForLink);
                         linkHandler.createServer();

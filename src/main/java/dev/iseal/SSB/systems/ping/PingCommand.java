@@ -11,7 +11,7 @@ public class PingCommand extends AbstractCommand {
     public PingCommand() {
         super(Commands.slash("ping", "Ping the bot")
                 .addOption(OptionType.BOOLEAN, "ephemeral", "Reply to the ping privately?", false),
-                false);
+                false, false);
     }
 
     @Override

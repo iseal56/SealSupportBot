@@ -10,6 +10,7 @@ public class AdCommand extends AbstractCommand {
     public AdCommand() {
         super(
                 Commands.slash("ad", "Advertise something of yours"),
+                false,
                 false
         );
     }
