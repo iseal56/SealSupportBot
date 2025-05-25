@@ -9,16 +9,16 @@ import net.dv8tion.jda.api.entities.IPermissionHolder;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.internal.utils.JDALogger;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import org.reflections.Reflections;
 import org.reflections.scanners.SubTypesScanner;
 import org.reflections.util.ClasspathHelper;
 import org.reflections.util.ConfigurationBuilder;
 import org.slf4j.Logger;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.nio.file.Files;
 import java.util.Set;
 import java.util.zip.ZipEntry;
@@ -108,6 +108,23 @@ public class Utils {
 
     public static String getFileExtension(File file) {
         String name = file.getName();
+        if (name == null || name.isEmpty()) {
+            return ""; // empty extension
+        }
+        if (!name.contains(".")) {
+            return ""; // no extension
+        }
+        // check for complex extensions
+        if (hasCharacterCountExact(name, '.', 2)) {
+            // if there are multiple dots, it could be a file with a complex extension like "archive.tar.gz"
+            // return the part after the second to last dot
+            int lastIndexOf = name.lastIndexOf(".");
+            int secondLastIndexOf = name.lastIndexOf(".", lastIndexOf - 1);
+            if (secondLastIndexOf == -1) {
+                return ""; // no valid extension
+            }
+            return name.substring(secondLastIndexOf + 1);
+        }
         int lastIndexOf = name.lastIndexOf(".");
         if (lastIndexOf == -1) {
             return ""; // empty extension
@@ -128,15 +145,45 @@ public class Utils {
     }
 
     public static void unzip(File zipFilePath, String destDirectory) throws IOException {
+        if (zipFilePath == null || !zipFilePath.exists() || !zipFilePath.isFile()) {
+            throw new IOException("Invalid zip file path: " + zipFilePath);
+        }
+        if (destDirectory == null || destDirectory.isEmpty()) {
+            throw new IOException("Destination directory cannot be null or empty.");
+        }
         File destDir = new File(destDirectory);
         if (!destDir.exists()) {
             destDir.mkdirs();
         }
+
+        String fileExtension = getFileExtension(zipFilePath);
+        log.debug("Attempting to extract file {} with extension {}", zipFilePath.getName(), fileExtension);
+
+        switch (fileExtension) {
+            case "zip":
+                unzipZipFile(zipFilePath, destDir);
+                break;
+            case "tar":
+                unzipTarFile(zipFilePath, destDir);
+                break;
+            case "tar.gz":
+                unzipTarGzFile(zipFilePath, destDir);
+                break;
+            case "7z":
+                // Implement 7z extraction logic here
+                throw new UnsupportedOperationException("7z file extraction is not implemented yet.");
+                //break;
+            default:
+                throw new IOException("Unsupported file type: " + getFileExtension(zipFilePath));
+        }
+    }
+
+    private static void unzipZipFile(File zipFilePath, File destDir) throws IOException {
         byte[] buffer = new byte[1024];
         try (ZipInputStream zis = new ZipInputStream(new FileInputStream(zipFilePath))) {
             ZipEntry zipEntry = zis.getNextEntry();
             while (zipEntry != null) {
-                File newFile = newFile(destDir, zipEntry);
+                File newFile = newFile(destDir, zipEntry.getName());
                 if (zipEntry.isDirectory()) {
                     if (!newFile.isDirectory() && !newFile.mkdirs()) {
                         throw new IOException("Failed to create directory " + newFile);
@@ -162,16 +209,105 @@ public class Utils {
         }
     }
 
+    private static void unzipTarFile(File tarFilePath, File destDir) throws IOException {
+        try (InputStream fi = new FileInputStream(tarFilePath);
+             InputStream bi = new BufferedInputStream(fi);
+             TarArchiveInputStream tis = new TarArchiveInputStream(bi)) {
+            extractFromTarArchiveInputStream(tis, destDir);
+        }
+    }
+
+    private static void unzipTarGzFile(File tarGzFilePath, File destDir) throws IOException {
+        try (InputStream fi = new FileInputStream(tarGzFilePath);
+             InputStream bi = new BufferedInputStream(fi);
+             InputStream gzi = new GzipCompressorInputStream(bi);
+             TarArchiveInputStream tis = new TarArchiveInputStream(gzi)) {
+            extractFromTarArchiveInputStream(tis, destDir);
+        }
+    }
+
+    private static void extractFromTarArchiveInputStream(TarArchiveInputStream tis, File destDir) throws IOException {
+        byte[] buffer = new byte[1024];
+        TarArchiveEntry entry;
+        while ((entry = tis.getNextTarEntry()) != null) {
+            File newFile = newFile(destDir, entry.getName());
+            if (entry.isDirectory()) {
+                if (!newFile.isDirectory() && !newFile.mkdirs()) {
+                    throw new IOException("Failed to create directory " + newFile);
+                }
+            } else {
+                File parent = newFile.getParentFile();
+                if (!parent.isDirectory() && !parent.mkdirs()) {
+                    throw new IOException("Failed to create directory " + parent);
+                }
+                try (FileOutputStream fos = new FileOutputStream(newFile)) {
+                    int len;
+                    while ((len = tis.read(buffer)) > 0) {
+                        fos.write(buffer, 0, len);
+                    }
+                }
+            }
+        }
+    }
+
+
+
     // Helper method to prevent Zip Slip vulnerability
-    private static File newFile(File destinationDir, ZipEntry zipEntry) throws IOException {
-        File destFile = new File(destinationDir, zipEntry.getName());
+    private static File newFile(File destinationDir, String zipEntryName) throws IOException {
+        File destFile = new File(destinationDir, zipEntryName);
         String destDirPath = destinationDir.getCanonicalPath();
         String destFilePath = destFile.getCanonicalPath();
 
         if (!destFilePath.startsWith(destDirPath + File.separator)) {
-            throw new IOException("Entry is outside of the target dir: " + zipEntry.getName());
+            throw new IOException("Entry is outside of the target dir: " + zipEntryName);
         }
         return destFile;
+    }
+
+    /**
+     * Checks if a specific character appears more or the exact number of times in a string.
+     *
+     * @param str The string to check. Can be null.
+     * @param character The character to count.
+     * @param expectedOccurrences The expected number of times the character should appear. Must be non-negative.
+     * @return {@code true} if the character appears more or the exact number of {@code expectedOccurrences} times,
+     *         {@code false} otherwise. Returns {@code false} if the input string is null or
+     *         if {@code expectedOccurrences} is negative.
+     */
+    public static boolean hasAtLeastCharacterCount(String str, char character, int expectedOccurrences) {
+        if (str == null || expectedOccurrences < 0) {
+            return false;
+        }
+        int count = 0;
+        for (int i = 0; i < str.length(); i++) {
+            if (str.charAt(i) == character) {
+                count++;
+            }
+        }
+        return count >= expectedOccurrences;
+    }
+
+    /**
+     * Checks if a specific character appears an exact number of times in a string.
+     *
+     * @param str The string to check. Can be null.
+     * @param character The character to count.
+     * @param expectedOccurrences The expected number of times the character should appear. Must be non-negative.
+     * @return {@code true} if the character appears exactly {@code expectedOccurrences} times,
+     *         {@code false} otherwise. Returns {@code false} if the input string is null or
+     *         if {@code expectedOccurrences} is negative.
+     */
+    public static boolean hasCharacterCountExact(String str, char character, int expectedOccurrences) {
+        if (str == null || expectedOccurrences < 0) {
+            return false;
+        }
+        int count = 0;
+        for (int i = 0; i < str.length(); i++) {
+            if (str.charAt(i) == character) {
+                count++;
+            }
+        }
+        return count == expectedOccurrences;
     }
 
 }
