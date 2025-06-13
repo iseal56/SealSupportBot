@@ -52,6 +52,7 @@ public class DockerHandler {
     private static final int DEFAULT_DEBUG_PORT_START = 1025;
     private static final int MAX_PORT_NUMBER = 65535;
     private static final String SERVER_NAME_PREFIX = "testserver-";
+    private static final String DEFAULT_MEMORY_LIMIT = "6G"; // Default memory limit for the server
     // TODO: Imlement 7z
     private static final List<String> ALLOWED_COMPRESSED_EXTENSIONS = Arrays.asList("zip", "tar.gz");
 
@@ -64,6 +65,7 @@ public class DockerHandler {
     private Closeable eventsListener;
     private volatile boolean stopListenerActive = false;
     private final TextChannel finalLogUploadChannel;
+    private final String memoryLimit;
     private final Logger log = JDALogger.getLog(getClass());
 
     private boolean onlyPluginsProvided;
@@ -78,14 +80,16 @@ public class DockerHandler {
      * @param id The unique identifier for this server instance.
      * @param minecraftVersion The Minecraft version to use if only plugins are provided (e.g., "1.19.4"). Defaults to "LATEST".
      * @param finalLogUploadChannelParam The JDA TextChannel where server logs should be uploaded upon shutdown.
+     * @param memoryLimit The memory limit for the server, e.g., "6G". Defaults to "6G" if not provided.
      * @throws Exception if any error occurs during initialization, such as file I/O issues or port allocation failures.
      */
-    public DockerHandler(File serverCompressedFile, UUID id, String minecraftVersion, TextChannel finalLogUploadChannelParam) throws Exception {
+    public DockerHandler(File serverCompressedFile, UUID id, String minecraftVersion, TextChannel finalLogUploadChannelParam, String memoryLimit) throws Exception {
         this.uuid = id;
         this.serverName = SERVER_NAME_PREFIX + uuid;
         this.minecraftVersion = (minecraftVersion == null || minecraftVersion.trim().isEmpty()) ? DEFAULT_MINECRAFT_VERSION : minecraftVersion;
         this.serverPath = Paths.get(System.getProperty("java.io.tmpdir"), TEMP_SERVER_ROOT_DIR_NAME, serverName).toString();
         this.finalLogUploadChannel = finalLogUploadChannelParam;
+        this.memoryLimit = (memoryLimit == null || memoryLimit.trim().isEmpty()) ? DEFAULT_MEMORY_LIMIT : memoryLimit;
 
         try {
             initializeServerFiles(serverCompressedFile);
@@ -260,7 +264,7 @@ public class DockerHandler {
         envVars.add("OPS=ICube56");
 
         // limit ram usage
-        envVars.add("MEMORY=5M"); // Set memory limit to 2GB, adjust as needed
+        envVars.add("MEMORY=6G"); // Set memory limit to 6GB, adjust as needed
 
         if (onlyPluginsProvided) {
             envVars.add("TYPE=PAPER");

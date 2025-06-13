@@ -3,6 +3,7 @@ package dev.iseal.SSB.systems.testServer;
 import de.leonhard.storage.Yaml;
 import dev.iseal.SSB.SSBMain;
 import dev.iseal.SSB.utils.abstracts.AbstractCommand;
+import dev.iseal.SSB.utils.utils.DownloadUtils;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
@@ -14,13 +15,9 @@ import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
-import java.net.MalformedURLException;
-import java.net.URI;
-import java.net.URL;
-import java.net.URLConnection;
+import java.io.File;
+import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.CompletionException;
 import java.util.stream.Collectors;
 
 /**
@@ -45,12 +42,8 @@ public class TestServerCommand extends AbstractCommand {
     private static final String OPTION_MESSAGE_ID = "messageid";
     private static final String OPTION_MINECRAFT_VERSION = "minecraftversion";
     private static final String OPTION_ID = "id";
+    private static final String OPTION_MEMORY = "memorylimit";
     private static final String DEFAULT_MINECRAFT_VERSION = "LATEST";
-
-    // File handling constants
-    private static final String TEMP_DOWNLOAD_DIR_NAME = "discord_ssb_downloads";
-    private static final int DOWNLOAD_BUFFER_SIZE = 4096;
-    private static final long DOWNLOAD_PROGRESS_UPDATE_INTERVAL_MS = 1500;
 
     private final Yaml config;
     private final List<Long> allowedUsers = new ArrayList<>();
@@ -69,7 +62,8 @@ public class TestServerCommand extends AbstractCommand {
                                         .addOption(OptionType.STRING, OPTION_LINK, "A direct link to a .zip, .tar.gz, .tar, or .7z file.", false)
                                         .addOption(OptionType.ATTACHMENT, OPTION_FILE, "A .zip, .tar.gz, .tar, or .7z file.", false)
                                         .addOption(OptionType.STRING, OPTION_MESSAGE_ID, "The message ID of the file attachment.", false)
-                                        .addOption(OptionType.STRING, OPTION_MINECRAFT_VERSION, "Minecraft version (e.g., 1.20.4), defaults to LATEST.", false),
+                                        .addOption(OptionType.STRING, OPTION_MINECRAFT_VERSION, "Minecraft version (e.g., 1.20.4), defaults to LATEST.", false)
+                                        .addOption(OptionType.INTEGER, OPTION_MEMORY, "Memory limit in MB (default: 6G).", false),
                                 new SubcommandData(SUBCOMMAND_DELETE, "Delete an existing test server.")
                                         .addOption(OptionType.STRING, OPTION_ID, "The UUID of the server to delete.", true)
                         ),
@@ -147,6 +141,7 @@ public class TestServerCommand extends AbstractCommand {
         Message.Attachment fileAttachment = event.getOption(OPTION_FILE, OptionMapping::getAsAttachment);
         String messageId = event.getOption(OPTION_MESSAGE_ID, OptionMapping::getAsString);
         String minecraftVersion = event.getOption(OPTION_MINECRAFT_VERSION, DEFAULT_MINECRAFT_VERSION, OptionMapping::getAsString);
+        String memoryLimitStr = event.getOption(OPTION_MEMORY, OptionMapping::getAsString);
 
         if (link == null && fileAttachment == null && messageId == null) {
             event.getHook().editOriginal("You must provide either a direct link, a file attachment or a message id to download from.").queue();
@@ -156,53 +151,49 @@ public class TestServerCommand extends AbstractCommand {
         log.debug("Received create subcommand with link: {}, fileAttachment: {}, messageId: {}, minecraftVersion: {}",
                 link, fileAttachment != null ? fileAttachment.getFileName() : "null", messageId, minecraftVersion);
 
-        boolean noMoreThanOneIsNull =
-                ((link == null ? 1 : 0) +
-                        (fileAttachment == null ? 1 : 0) +
-                        (messageId == null ? 1 : 0)) <= 1;
+        int providedOptions = 0;
+        if (link != null) providedOptions++;
+        if (fileAttachment != null) providedOptions++;
+        if (messageId != null) providedOptions++;
 
-        if (noMoreThanOneIsNull) {
-            event.getHook().editOriginal("Please provide either a link, a file or a message id, not more than one.").queue();
-            return;
-        }
-
-        File tempDownloadDir = new File(System.getProperty("java.io.tmpdir"), TEMP_DOWNLOAD_DIR_NAME);
-        if (!tempDownloadDir.exists() && !tempDownloadDir.mkdirs()) {
-            log.error("Could not create temporary download directory: {}", tempDownloadDir.getAbsolutePath());
-            event.getHook().editOriginal("Error: Could not create temporary download directory.").queue();
+        if (providedOptions > 1) {
+            event.getHook().editOriginal("Please provide either a link, a file, or a message id, but not more than one.").queue();
             return;
         }
 
         if (fileAttachment != null) {
-            launchServerCreationForAttachment(event, fileAttachment, minecraftVersion, tempDownloadDir);
-        } else if (link != null) { // link is not null
-            try {
-                URI.create(link).toURL(); // Validate URL early
-                launchServerCreationForLink(event, link, minecraftVersion, tempDownloadDir);
-            } catch (MalformedURLException e) {
-                log.warn("Invalid URL provided: {}", link, e);
-                event.getHook().editOriginal("Invalid URL format: " + link).queue();
-            }
-        } else if (messageId != null) {
+            launchServerCreationForAttachment(event, fileAttachment, minecraftVersion, memoryLimitStr);
+        } else if (link != null) {
+            launchServerCreationForLink(event, link, minecraftVersion, memoryLimitStr);
+        } else if (messageId != null) { // messageId is not null
             try {
                 long msgId = Long.parseLong(messageId);
-                Message originalMessage = event.getHook().retrieveOriginal().complete();
-                Message message = originalMessage.getChannel().retrieveMessageById(msgId).complete();
-                if (!event.getMember().hasPermission(message.getGuildChannel(), Permission.VIEW_CHANNEL)) {
+                // Retrieve message from the current channel. Consider if message could be in another channel.
+                // For simplicity, assuming current channel or a channel accessible to the bot.
+                // event.getChannel().retrieveMessageById(msgId).queue( message -> { ... }, failure -> { ... });
+                // This means the channel where the command was run.
+                Message originalInteractionMessage = event.getHook().retrieveOriginal().complete(); // To get the channel
+                Message messageWithAttachment = originalInteractionMessage.getChannel().retrieveMessageById(msgId).complete();
+
+                if (!event.getMember().hasPermission(messageWithAttachment.getGuildChannel(), Permission.VIEW_CHANNEL)) {
                     log.warn("User {} does not have permission to view message ID {} in channel {}.",
-                            event.getUser().getEffectiveName(), msgId, message.getChannel().getName());
+                            event.getUser().getEffectiveName(), msgId, messageWithAttachment.getChannel().getName());
                     event.getHook().editOriginal("You do not have permission to view this message.").queue();
                     return;
                 }
-                if (message == null || message.getAttachments().isEmpty()) {
+
+                if (messageWithAttachment.getAttachments().isEmpty()) {
                     event.getHook().editOriginal("No attachments found in the specified message.").queue();
                     return;
                 }
-                Message.Attachment attachment = message.getAttachments().get(0); // Use the first attachment
-                launchServerCreationForAttachment(event, attachment, minecraftVersion, tempDownloadDir);
+                Message.Attachment attachmentFromMessage = messageWithAttachment.getAttachments().get(0); // Use the first attachment
+                launchServerCreationForAttachment(event, attachmentFromMessage, minecraftVersion, memoryLimitStr);
             } catch (NumberFormatException e) {
                 log.warn("Invalid message ID format: {}", messageId, e);
                 event.getHook().editOriginal("Invalid message ID format: " + messageId).queue();
+            } catch (Exception e) { // Catch potential errors from message retrieval
+                log.error("Error retrieving message or attachment for messageId {}: {}", messageId, e.getMessage(), e);
+                event.getHook().editOriginal("Could not retrieve the attachment from message ID: " + messageId).queue();
             }
         }
     }
@@ -213,25 +204,25 @@ public class TestServerCommand extends AbstractCommand {
      * @param event            The command event.
      * @param attachment       The file attachment.
      * @param minecraftVersion The Minecraft version for the server.
-     * @param tempDownloadDir  The temporary directory for downloads.
+     * @param memoryLimitStr   The memory limit string.
      */
-    private void launchServerCreationForAttachment(SlashCommandInteractionEvent event, Message.Attachment attachment, String minecraftVersion, File tempDownloadDir) {
-        UUID serverId = UUID.randomUUID(); // Generate serverId before starting the thread
+    private void launchServerCreationForAttachment(SlashCommandInteractionEvent event, Message.Attachment attachment, String minecraftVersion, String memoryLimitStr) {
+        UUID serverId = UUID.randomUUID();
         new Thread(() -> {
+            File downloadedFile = null;
             String originalFileName = attachment.getFileName();
-            File downloadedFile = new File(tempDownloadDir, serverId + "_" + sanitizeFileName(originalFileName));
             log.info("Starting server creation for attachment: {}, serverId: {}", originalFileName, serverId);
 
             try {
-                downloadAttachment(event, attachment, downloadedFile, originalFileName);
-                executeCoreServerCreationLogic(event, downloadedFile, originalFileName, serverId, minecraftVersion);
+                downloadedFile = DownloadUtils.downloadAttachmentToTempDir(event, attachment, serverId.toString());
+                executeCoreServerCreationLogic(event, downloadedFile, originalFileName, serverId, minecraftVersion, memoryLimitStr);
             } catch (IOException e) {
                 log.error("IOException during attachment download/processing for serverId {}: {}", serverId, e.getMessage(), e);
-                event.getHook().editOriginal("Failed to download or process " + getUserFriendlyName(originalFileName) + ": " + e.getMessage()).queue();
-                cleanupDownloadedFile(downloadedFile);
+                event.getHook().editOriginal("Failed to download or process " + DownloadUtils.getUserFriendlyName(originalFileName) + ": " + e.getMessage()).queue();
+                cleanupDownloadedFile(downloadedFile); // Clean up if download failed and file exists
             } catch (Exception e) {
                 log.error("Unexpected exception during attachment processing for serverId {}: {}", serverId, e.getMessage(), e);
-                event.getHook().editOriginal("An unexpected error occurred while processing " + getUserFriendlyName(originalFileName) + ".").queue();
+                event.getHook().editOriginal("An unexpected error occurred while processing " + DownloadUtils.getUserFriendlyName(originalFileName) + ".").queue();
                 cleanupDownloadedFile(downloadedFile);
             }
         }, "ServerCreate-Attach-" + serverId).start();
@@ -243,157 +234,78 @@ public class TestServerCommand extends AbstractCommand {
      * @param event            The command event.
      * @param link             The URL link to the archive.
      * @param minecraftVersion The Minecraft version for the server.
-     * @param tempDownloadDir  The temporary directory for downloads.
+     * @param memoryLimitStr   The memory limit string.
      */
-    private void launchServerCreationForLink(SlashCommandInteractionEvent event, String link, String minecraftVersion, File tempDownloadDir) {
-        UUID serverId = UUID.randomUUID(); // Generate serverId before starting the thread
+    private void launchServerCreationForLink(SlashCommandInteractionEvent event, String link, String minecraftVersion, String memoryLimitStr) {
+        UUID serverId = UUID.randomUUID();
         new Thread(() -> {
-            String derivedFileName = deriveFileNameFromUrl(link);
-            File downloadedFile = new File(tempDownloadDir, serverId + "_" + sanitizeFileName(derivedFileName));
-            log.info("Starting server creation for link: {}, serverId: {}", link, serverId);
-
+            File downloadedFile = null;
+            String derivedFileName = null;
             try {
-                downloadFromLink(event, link, downloadedFile, derivedFileName);
-                executeCoreServerCreationLogic(event, downloadedFile, derivedFileName, serverId, minecraftVersion);
+                derivedFileName = DownloadUtils.deriveFileNameFromUrl(link);
+                log.info("Starting server creation for link: {}, derived name: {}, serverId: {}", link, derivedFileName, serverId);
+
+                downloadedFile = DownloadUtils.downloadUrlToTempDir(event, link, serverId.toString());
+                executeCoreServerCreationLogic(event, downloadedFile, derivedFileName, serverId, minecraftVersion, memoryLimitStr);
             } catch (IOException e) {
                 log.error("IOException during link download/processing for serverId {}: {}", serverId, e.getMessage(), e);
-                event.getHook().editOriginal("Failed to download or process from link: " + e.getMessage()).queue();
+                String userFriendlyLinkName = (derivedFileName != null) ? DownloadUtils.getUserFriendlyName(derivedFileName) : "the linked file";
+                event.getHook().editOriginal("Failed to download or process " + userFriendlyLinkName + ": " + e.getMessage()).queue();
                 cleanupDownloadedFile(downloadedFile);
             } catch (Exception e) {
                 log.error("Unexpected exception during link processing for serverId {}: {}", serverId, e.getMessage(), e);
-                event.getHook().editOriginal("An unexpected error occurred while processing the link.").queue();
+                String userFriendlyLinkName = (derivedFileName != null) ? DownloadUtils.getUserFriendlyName(derivedFileName) : "the linked file";
+                event.getHook().editOriginal("An unexpected error occurred while processing " + userFriendlyLinkName + ".").queue();
                 cleanupDownloadedFile(downloadedFile);
             }
         }, "ServerCreate-Link-" + serverId).start();
     }
 
-    /**
-     * Downloads a file from a JDA Message.Attachment with progress updates.
-     *
-     * @param event            The command event for progress updates.
-     * @param attachment       The attachment to download.
-     * @param destinationFile  The file to save the download to.
-     * @param originalFileName The original name of the file for display.
-     * @throws IOException If an I/O error occurs during download.
-     */
-    private void downloadAttachment(SlashCommandInteractionEvent event, Message.Attachment attachment, File destinationFile, String originalFileName) throws IOException {
-        long totalSize = attachment.getSize();
-        String userFriendlyName = getUserFriendlyName(originalFileName);
-        log.debug("Downloading attachment '{}' to '{}', size: {}", userFriendlyName, destinationFile.getAbsolutePath(), totalSize);
-
-        try (InputStream inputStream = attachment.getProxy().download().join();
-             FileOutputStream fos = new FileOutputStream(destinationFile)) {
-            transferStreamWithProgress(event, inputStream, fos, totalSize, userFriendlyName);
-        } catch (UncheckedIOException | CompletionException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof IOException) {
-                throw (IOException) cause;
-            }
-            throw new IOException("Failed to download attachment: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Downloads a file from a URL with progress updates.
-     *
-     * @param event            The command event for progress updates.
-     * @param urlString        The URL string to download from.
-     * @param destinationFile  The file to save the download to.
-     * @param originalFileName The original name of the file for display (can be derived).
-     * @throws IOException If an I/O error occurs during download.
-     */
-    private void downloadFromLink(SlashCommandInteractionEvent event, String urlString, File destinationFile, String originalFileName) throws IOException {
-        String userFriendlyName = getUserFriendlyName(originalFileName);
-        log.debug("Downloading from link '{}' to '{}'", urlString, destinationFile.getAbsolutePath());
-        URL url = new URL(urlString);
-        URLConnection connection = url.openConnection();
-        long totalSize = connection.getContentLengthLong();
-
-        try (InputStream inputStream = connection.getInputStream();
-             FileOutputStream fos = new FileOutputStream(destinationFile)) {
-            transferStreamWithProgress(event, inputStream, fos, totalSize, userFriendlyName);
-        }
-    }
-
-    /**
-     * Transfers data from an InputStream to an OutputStream, providing progress updates.
-     *
-     * @param event              The command event for progress updates.
-     * @param source             The InputStream to read from.
-     * @param destination        The OutputStream to write to.
-     * @param totalSize          The total size of the content, or -1 if unknown.
-     * @param userFriendlyName   The name of the content being transferred for display.
-     * @throws IOException If an I/O error occurs.
-     */
-    private void transferStreamWithProgress(SlashCommandInteractionEvent event, InputStream source, OutputStream destination, long totalSize, String userFriendlyName) throws IOException {
-        String initialMessage = (totalSize <= 0) ?
-                "Downloading " + userFriendlyName + "... (size unknown)" :
-                "Downloading " + userFriendlyName + " (0%)...";
-        event.getHook().editOriginal(initialMessage).queue();
-
-        byte[] buffer = new byte[DOWNLOAD_BUFFER_SIZE];
-        int bytesRead;
-        long downloadedBytes = 0;
-        long lastUpdateTime = System.currentTimeMillis();
-
-        while ((bytesRead = source.read(buffer)) != -1) {
-            destination.write(buffer, 0, bytesRead);
-            downloadedBytes += bytesRead;
-            long currentTime = System.currentTimeMillis();
-            if (currentTime - lastUpdateTime > DOWNLOAD_PROGRESS_UPDATE_INTERVAL_MS) {
-                String progressMessage;
-                if (totalSize > 0) {
-                    int percentage = (int) ((downloadedBytes * 100L) / totalSize);
-                    progressMessage = "Downloading " + userFriendlyName + " (" + percentage + "%)...";
-                } else {
-                    progressMessage = "Downloading " + userFriendlyName + " (" + (downloadedBytes / 1024) + " KB)...";
-                }
-                event.getHook().editOriginal(progressMessage).queue();
-                lastUpdateTime = currentTime;
-            }
-        }
-        destination.flush();
-        log.debug("Download of {} complete. Total bytes: {}.", userFriendlyName, downloadedBytes);
-    }
-
+    // downloadAttachment, downloadFromLink, and transferStreamWithProgress methods removed.
 
     /**
      * Core logic for server creation after the archive file has been downloaded.
      * Passes the downloaded file to DockerHandler, which is assumed to handle extraction.
      *
      * @param event            The command event.
-     * @param downloadedFile   The downloaded archive file.
-     * @param originalFileName The original name of the archive.
+     * @param downloadedFile   The downloaded archive file (name includes serverId prefix).
+     * @param originalFileName The original name of the archive (user-facing, pre-sanitization/prefixing).
      * @param serverId         The UUID for the new server.
      * @param minecraftVersion The Minecraft version.
+     * @param memoryLimitStr   The memory limit string.
      */
-    private void executeCoreServerCreationLogic(SlashCommandInteractionEvent event, File downloadedFile, String originalFileName, UUID serverId, String minecraftVersion) {
-        File serverSourceForDocker;
+    private void executeCoreServerCreationLogic(SlashCommandInteractionEvent event, File downloadedFile, String originalFileName, UUID serverId, String minecraftVersion, String memoryLimitStr) {
         DockerHandler handler = null;
-        String userFriendlySourceName = getUserFriendlyName(originalFileName);
+        String userFriendlySourceName = DownloadUtils.getUserFriendlyName(originalFileName);
 
         try {
             event.getHook().editOriginal("Download of " + userFriendlySourceName + " complete. Processing server...").queue();
 
-            String fileExtension = getFileExtension(originalFileName);
-            log.info("Processing downloaded file: {} (type: {}) for serverId: {}", downloadedFile.getName(), fileExtension, serverId);
+            // originalFileName is the name before serverId prefix and sanitization by DownloadUtils.
+            // downloadedFile.getName() is the actual name on disk (e.g., serverId_sanitizedOriginalName.zip)
+            String fileExtension = getFileExtension(originalFileName); // Use original name for extension detection
+            log.info("Processing downloaded file: {} (original name: {}, type: {}) for serverId: {}",
+                    downloadedFile.getName(), originalFileName, fileExtension, serverId);
+
 
             if (".zip".equalsIgnoreCase(fileExtension) || isTarGz(fileExtension) || isTar(fileExtension) || is7z(fileExtension)) {
-                serverSourceForDocker = downloadedFile; // DockerHandler will handle extraction if needed
                 log.debug("Passing {} directly to DockerHandler for serverId: {}", downloadedFile.getAbsolutePath(), serverId);
             } else {
-                String unsupportedMsg = "Unsupported file type: " + originalFileName + ". Please use .zip, .tar.gz, .tar, or .7z.";
+                String unsupportedMsg = "Unsupported file type: " + userFriendlySourceName + ". Please use .zip, .tar.gz, .tar, or .7z.";
                 event.getHook().editOriginal(unsupportedMsg).queue();
-                log.warn("Unsupported file type '{}' for serverId {}. File: {}", originalFileName, serverId, downloadedFile.getAbsolutePath());
-                return; // Exit, finally block will clean up downloadedFile
+                log.warn("Unsupported file type '{}' (original: {}) for serverId {}. File: {}",
+                        fileExtension, originalFileName, serverId, downloadedFile.getAbsolutePath());
+                // No need to return here, finally block will clean up downloadedFile
+                // However, we should not proceed with DockerHandler creation.
+                return;
             }
 
-            log.debug("Initializing DockerHandler for serverId: {} with source: {}", serverId, serverSourceForDocker.getAbsolutePath());
-            handler = new DockerHandler(serverSourceForDocker, serverId, minecraftVersion, logChannel);
+            log.debug("Initializing DockerHandler for serverId: {} with source: {}", serverId, downloadedFile.getAbsolutePath());
+            handler = new DockerHandler(downloadedFile, serverId, minecraftVersion, logChannel, memoryLimitStr);
             servers.put(serverId, handler);
             log.debug("DockerHandler created and stored for serverId: {}", serverId);
 
-            handler.createServer(); // Assumes DockerHandler can handle the archive/directory
+            handler.createServer();
             log.debug("DockerHandler.createServer() called for serverId: {}", serverId);
 
             int assignedPort = handler.getAssignedPort();
@@ -455,6 +367,8 @@ public class TestServerCommand extends AbstractCommand {
         } catch (Exception e) {
             log.error("Failed to stop/delete server {}: {}", serverUuid, e.getMessage(), e);
             event.getHook().editOriginal("Failed to delete server " + serverUuid + ". Error: " + e.getMessage()).queue();
+            // Re-add handler if deletion failed, or handle state more robustly?
+            // For now, it's removed from the map. If stopServer fails, container might still be running.
         }
     }
 
@@ -470,8 +384,8 @@ public class TestServerCommand extends AbstractCommand {
         DockerHandler removedHandler = servers.remove(serverId);
         if (removedHandler != null) {
             log.debug("Stopping and cleaning up server {} due to creation error.", serverId);
-            removedHandler.stopServer();
-        } else if (handler != null) {
+            removedHandler.stopServer(); // This might throw, ensure it's handled or logged
+        } else if (handler != null) { // If handler was created but not added to map yet
             log.debug("Stopping and cleaning up handler for server {} (not in map) due to creation error.", serverId);
             handler.stopServer();
         }
@@ -518,81 +432,5 @@ public class TestServerCommand extends AbstractCommand {
 
     private boolean is7z(String extension) {
         return ".7z".equalsIgnoreCase(extension);
-    }
-
-    /**
-     * Sanitizes a filename by replacing characters not suitable for typical file systems.
-     *
-     * @param fileName The original filename.
-     * @return A sanitized filename.
-     */
-    private String sanitizeFileName(String fileName) {
-        if (fileName == null) return "unknown_file";
-        return fileName.replaceAll("[^a-zA-Z0-9.\\-_]+", "_");
-    }
-
-    /**
-     * Derives a filename from a URL string.
-     *
-     * @param urlString The URL string.
-     * @return A derived filename or a default name.
-     */
-    private String deriveFileNameFromUrl(String urlString) {
-        try {
-            URL url = new URL(urlString);
-            String path = url.getPath();
-            if (path == null || path.isEmpty() || path.equals("/")) {
-                String query = url.getQuery();
-                if (query != null) {
-                    String[] params = query.split("&");
-                    for (String param : params) {
-                        if (param.toLowerCase().startsWith("filename=") || param.toLowerCase().startsWith("file=")) {
-                            String potentialName = param.substring(param.indexOf("=") + 1);
-                            if (!potentialName.trim().isEmpty()) return potentialName;
-                        }
-                    }
-                }
-                return "downloaded_content" + getExtensionFromContentType(url);
-            }
-            String name = new File(path).getName();
-            return name.isEmpty() ? "downloaded_content" + getExtensionFromContentType(url) : name;
-        } catch (MalformedURLException e) {
-            log.warn("Could not parse URL for filename: {}", urlString, e);
-            return "download_from_invalid_url.dat";
-        }
-    }
-
-    /**
-     * Tries to get a file extension from the Content-Type of a URL connection.
-     * @param url The URL to inspect.
-     * @return A file extension (e.g., ".zip") or ".dat" as a fallback.
-     */
-    private String getExtensionFromContentType(URL url) {
-        try {
-            URLConnection conn = url.openConnection();
-            String contentType = conn.getContentType();
-            if (contentType != null) {
-                contentType = contentType.toLowerCase();
-                if (contentType.contains("zip")) return ".zip";
-                if (contentType.contains("gzip") || contentType.contains("x-gtar")) return ".tar.gz";
-                if (contentType.contains("tar")) return ".tar";
-                if (contentType.contains("x-7z-compressed")) return ".7z";
-            }
-        } catch (IOException e) {
-            log.warn("Could not open connection to get content type for URL: {}", url, e);
-        }
-        return ".dat"; // Default extension
-    }
-
-
-    /**
-     * Creates a user-friendly name for display, truncating if too long.
-     *
-     * @param fileName The original filename.
-     * @return A user-friendly, potentially truncated name.
-     */
-    private String getUserFriendlyName(String fileName) {
-        if (fileName == null || fileName.isEmpty()) return "file";
-        return fileName.length() > 40 ? fileName.substring(0, 37) + "..." : fileName;
     }
 }
