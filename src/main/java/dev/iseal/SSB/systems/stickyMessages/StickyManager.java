@@ -26,7 +26,7 @@ public class StickyManager extends AbstractMessageListener {
     private final Logger log = JDALogger.getLog(StickyManager.class);
     private final int MAX_COOLDOWN; // millis
     private final int MAX_TIME_BEFORE_LAST_MSG;
-
+    private final String FOOTER_CONTENT = "\n\n-# This is a sticky message. It's not replying to anyone, just here to stay.";
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
     private final HashMap<StandardGuildMessageChannel, Long> lastRunTime = new HashMap<>();
     private final HashMap<StandardGuildMessageChannel, ScheduledFuture<?>> scheduledTasks = new HashMap<>();
@@ -162,7 +162,7 @@ public class StickyManager extends AbstractMessageListener {
             );
         }
 
-        channel.sendMessage(content).queue(
+        channel.sendMessage("@silent\n"+content+FOOTER_CONTENT).queue(
                 sentMessage -> {
                     lastStickyMessageId.put(channel, sentMessage.getIdLong());
                     log.info("Sent sticky message to channel: {} (ID: {})", channel.getName(), sentMessage.getId());
